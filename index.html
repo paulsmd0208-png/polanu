@@ -1285,11 +1285,11 @@ async function doRegister() {
   // Email an Paul senden (öffnet Mail-Client)
   const subject = encodeURIComponent("[POLANU] Neue Registrierungsanfrage: " + user);
   const body = encodeURIComponent(
-    "Hallo Paul,\n\n" +
-    "Ein neuer Nutzer möchte Zugang zu POLANU:\n\n" +
+    "Hallo" + user +"\n\n" +
+    "Dies hier sind deine anmelde Daten:\n\n" +
     "  Username: " + user + "\n" +
     "  Datum: " + new Date().toLocaleString("de-DE") + "\n\n" +
-    "Paul wird mit absender dieser Email benachrichtigt und kann dich somit freischalten 👍.\n\n" +
+    "Paul wird mit absenden dieser Email benachrichtigt und kann dich somit freischalten 👍.\n\n" +
     "Dein POLANU Team"
   );
   
