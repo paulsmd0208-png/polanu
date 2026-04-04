@@ -1166,226 +1166,52 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 
 <script>
 // ═══════════════════════════════════════════
-// POLANU AUTH – Vollständiges System
-// Daten liegen im localStorage des Browsers,
-// der auf GitHub Pages liegt – also auf github.io.
-// Damit alle Geräte dieselben Daten sehen,
-// nutzen wir einen einfachen GitHub Gist als
-// "Backend" (öffentlich lesbar, privat schreibbar).
-//
-// EINFACHERE VARIANTE (kein Gist nötig):
-// Alle User-Daten im localStorage DES ADMINS.
-// Andere Nutzer melden sich an, ihre Anfrage
-// wird als "pending" gespeichert + Paul bekommt
-// eine mailto-Email. Paul bestätigt manuell im
-// Admin Panel und gibt dem Nutzer den Status "approved".
-//
-// Das funktioniert so:
-// - Registrierung → Status "pending", Email an Paul
-// - Paul öffnet Admin Panel → klickt Approve
-// - Nutzer versucht Login → Status "approved" → Zugang
-// ═══════════════════════════════════════════
+const ADMIN_USER = "paul";
+const ADMIN_PASS = "master001";
+const SESSION_KEY = "pol-session";
 
-const ADMIN_USER = "paul"; // ← Dein Username (klein)
-const ADMIN_PASS = "master001"; // ← Dein Passwort (kannst du ändern)
-const ADMIN_EMAIL = "schmidtpaul.ecom@gmail.com"; // ← Deine Email für Benachrichtigungen
+function getSession(){try{return JSON.parse(sessionStorage.getItem(SESSION_KEY))}catch{return null}}
+function setSession(u){sessionStorage.setItem(SESSION_KEY,JSON.stringify(u))}
 
-const AUTH_KEY = "polanu-auth-users";
-const SESSION_KEY = "polanu-session";
+function showMsg(id,msg,type){const el=document.getElementById(id);el.textContent=msg;el.className="auth-msg "+type}
 
-function getUsers() {
-  try { return JSON.parse(localStorage.getItem(AUTH_KEY) || "[]"); } catch { return []; }
-}
-function saveUsers(u) {
-  localStorage.setItem(AUTH_KEY, JSON.stringify(u));
-}
-function getSession() {
-  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch { return null; }
-}
-function setSession(u) {
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(u));
+function authTab(tab){
+  document.getElementById("tab-login").classList.toggle("on",tab==="login");
+  document.getElementById("tab-reg").classList.toggle("on",tab==="register");
+  document.getElementById("form-login").style.display=tab==="login"?"":"none";
+  document.getElementById("form-register").style.display=tab==="register"?"":"none";
+  document.getElementById("form-pending").style.display="none";
 }
 
-// Sicherer Hash (einfach aber ausreichend für diesen Zweck)
-async function hashPass(pass) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pass + "polanu-salt"));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
-function showMsg(id, msg, type) {
-  const el = document.getElementById(id);
-  el.textContent = msg;
-  el.className = "auth-msg " + type;
-}
-
-function authTab(tab) {
-  document.getElementById("tab-login").classList.toggle("on", tab === "login");
-  document.getElementById("tab-reg").classList.toggle("on", tab === "register");
-  document.getElementById("form-login").style.display = tab === "login" ? "" : "none";
-  document.getElementById("form-register").style.display = tab === "register" ? "" : "none";
-  document.getElementById("form-pending").style.display = "none";
-}
-
-async function doLogin() {
-  const user = document.getElementById("l-user").value.trim().toLowerCase();
-  const pass = document.getElementById("l-pass").value;
-  if (!user || !pass) { showMsg("l-msg", "Bitte alle Felder ausfüllen.", "err"); return; }
-
-  // Admin Hardcode
-  if (user === ADMIN_USER) {
-    if (pass === ADMIN_PASS) {
-      grantAccess({ username: ADMIN_USER, role: "admin" });
-      return;
-    } else {
-      showMsg("l-msg", "Falsches Passwort.", "err"); return;
-    }
+function doLogin(){
+  const user=document.getElementById("l-user").value.trim().toLowerCase();
+  const pass=document.getElementById("l-pass").value;
+  if(!user||!pass){showMsg("l-msg","Bitte alle Felder ausfüllen.","err");return}
+  if(user===ADMIN_USER && pass===ADMIN_PASS){
+    grantAccess({username:ADMIN_USER,role:"admin"});return;
   }
-
-  const users = getUsers();
-  const h = await hashPass(pass);
-  const found = users.find(u => u.username === user && u.passwordHash === h);
-  if (!found) { showMsg("l-msg", "Unbekannter Nutzer oder falsches Passwort.", "err"); return; }
-  if (found.status === "pending") {
-    showMsg("l-msg", "Dein Account wartet noch auf Freischaltung.", "warn");
-    document.getElementById("form-login").style.display = "none";
-    document.getElementById("form-pending").style.display = "";
-    return;
-  }
-  if (found.status === "rejected") { showMsg("l-msg", "Dein Account wurde abgelehnt.", "err"); return; }
-  if (found.status === "approved") {
-    grantAccess(found); return;
-  }
-  showMsg("l-msg", "Unbekannter Status.", "err");
+  showMsg("l-msg","Falsches Passwort oder unbekannter Nutzer.","err");
 }
 
-async function doRegister() {
-  const user = document.getElementById("r-user").value.trim().toLowerCase();
-  const pass = document.getElementById("r-pass").value;
-  const pass2 = document.getElementById("r-pass2").value;
-  if (!user || !pass) { showMsg("r-msg", "Bitte alle Felder ausfüllen.", "err"); return; }
-  if (user.length < 3) { showMsg("r-msg", "Username min. 3 Zeichen.", "err"); return; }
-  if (pass.length < 6) { showMsg("r-msg", "Passwort min. 6 Zeichen.", "err"); return; }
-  if (pass !== pass2) { showMsg("r-msg", "Passwörter stimmen nicht überein.", "err"); return; }
-  if (user === ADMIN_USER) { showMsg("r-msg", "Dieser Username ist reserviert.", "err"); return; }
-
-  const users = getUsers();
-  if (users.find(u => u.username === user)) {
-    showMsg("r-msg", "Username bereits vergeben.", "err"); return;
-  }
-
-  const h = await hashPass(pass);
-  const newUser = {
-    username: user,
-    passwordHash: h,
-    status: "pending",
-    requestedAt: new Date().toISOString()
-  };
-  users.push(newUser);
-  saveUsers(users);
-
-  // Email an Paul senden (öffnet Mail-Client)
-  const subject = encodeURIComponent("[POLANU] Neue Registrierungsanfrage: " + user);
-  const body = encodeURIComponent(
-    "Hallo" +user + \n\n" +
-    "Vielen Dank für deine Regestrirung bei POLANU:\n\n" +
-    "  Username: " + user + "\n" +
-    "  Datum: " + new Date().toLocaleString("de-DE") + "\n\n" +
-    "Paul wird durch absenden dieser Email benachrichtigt und kann dich dann freischalten.\n\n" +
-    "Dein POLANU Team"
-  );
-  
-  // Versuche Email zu öffnen
-  try {
-    window.location.href = "mailto:" + ADMIN_EMAIL + "?subject=" + subject + "&body=" + body;
-  } catch(e) {}
-
-  showMsg("r-msg", "Anfrage gesendet! Warte auf Bestätigung.", "ok");
-  setTimeout(() => {
-    document.getElementById("form-register").style.display = "none";
-    document.getElementById("form-pending").style.display = "";
-  }, 1500);
+function doRegister(){
+  showMsg("r-msg","Registrierung kommt bald!","warn");
 }
 
-function grantAccess(user) {
+function grantAccess(user){
   setSession(user);
-  const wall = document.getElementById("auth-wall");
-  const root = document.getElementById("root");
-  const btn = document.getElementById("admin-btn");
-  if (wall) wall.setAttribute("style", "display:none!important");
-  if (root) root.setAttribute("style", "display:block!important");
-  if (btn && (user.role === "admin" || user.username === ADMIN_USER)) {
-    btn.setAttribute("style", "display:block!important");
+  document.getElementById("auth-wall").style.display="none";
+  document.getElementById("root").style.display="block";
+  if(user.role==="admin"){
+    document.getElementById("admin-btn").style.display="block";
   }
 }
 
-function openAdmin() {
-  const panel = document.getElementById("admin-panel");
-  panel.style.display = "flex";
-  renderAdminList();
-}
+function openAdmin(){document.getElementById("admin-panel").style.display="flex"}
+function closeAdmin(){document.getElementById("admin-panel").style.display="none"}
 
-function closeAdmin() {
-  document.getElementById("admin-panel").style.display = "none";
-}
-
-function renderAdminList() {
-  const users = getUsers();
-  const list = document.getElementById("admin-list");
-  const empty = document.getElementById("admin-empty");
-  list.innerHTML = "";
-  if (users.length === 0) {
-    empty.style.display = "";
-    return;
-  }
-  empty.style.display = "none";
-  users.forEach(u => {
-    const row = document.createElement("div");
-    row.className = "admin-row";
-    const date = new Date(u.requestedAt).toLocaleString("de-DE");
-    let actionHtml = "";
-    if (u.status === "pending") {
-      actionHtml = `
-        <div class="admin-actions">
-          <button class="admin-approve" onclick="approveUser('${u.username}')">✓ Freischalten</button>
-          <button class="admin-reject" onclick="rejectUser('${u.username}')">✕ Ablehnen</button>
-        </div>`;
-    } else if (u.status === "approved") {
-      actionHtml = `<span class="admin-approved">✓ Freigeschaltet</span>`;
-    } else if (u.status === "rejected") {
-      actionHtml = `<span class="admin-rejected">✕ Abgelehnt</span>`;
-    }
-    row.innerHTML = `
-      <div>
-        <div class="admin-name">${u.username}</div>
-        <div class="admin-meta">${date} · Status: ${u.status}</div>
-      </div>
-      ${actionHtml}
-    `;
-    list.appendChild(row);
-  });
-}
-
-function approveUser(username) {
-  const users = getUsers();
-  const idx = users.findIndex(u => u.username === username);
-  if (idx >= 0) { users[idx].status = "approved"; saveUsers(users); renderAdminList(); }
-}
-
-function rejectUser(username) {
-  const users = getUsers();
-  const idx = users.findIndex(u => u.username === username);
-  if (idx >= 0) { users[idx].status = "rejected"; saveUsers(users); renderAdminList(); }
-}
-
-// App-Root initial verstecken
-document.getElementById("root").style.display = "none";
-
-// Session prüfen beim Laden
-window.addEventListener("load", () => {
-  const session = getSession();
-  if (session && session.username) {
-    grantAccess(session);
-  }
+window.addEventListener("load",()=>{
+  const s=getSession();
+  if(s&&s.username){grantAccess(s)}
 });
 </script>
 </body>
